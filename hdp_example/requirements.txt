@@ -1,0 +1,7 @@
+pandas
+numpy
+spacy>=2.2.4
+nltk>=3.4.5
+gensim>=3.8.3
+plotnine>=0.6.0
+tomotopy>=0.7.1
