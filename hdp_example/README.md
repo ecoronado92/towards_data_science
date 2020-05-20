@@ -17,4 +17,4 @@ We will also need to download the MALLET LDA binary with the following set of te
 curl -O http://mallet.cs.umass.edu/dist/mallet-2.0.8.zip
 unzip mallet-2.0.8.zip
 rm mallet-2.0.8.zip
-``
+```

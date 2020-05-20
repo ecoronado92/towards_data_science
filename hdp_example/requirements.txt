@@ -5,3 +5,4 @@ nltk>=3.4.5
 gensim>=3.8.3
 plotnine>=0.6.0
 tomotopy>=0.7.1
+wordcloud>=1.7.0
