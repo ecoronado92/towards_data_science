@@ -25,6 +25,8 @@ rm mallet-2.0.8.zip
 
 - **scripts/**: Folder with main scripts used in above notebook
 
+- **top_dominant.csv**: Table true and predicted topics for documents in data set
+
 ## Additional Content
 
 - **models/**: Folder with pre-saved `tomotopy` models used in article to compare coherences
