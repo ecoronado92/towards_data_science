@@ -18,3 +18,19 @@ curl -O http://mallet.cs.umass.edu/dist/mallet-2.0.8.zip
 unzip mallet-2.0.8.zip
 rm mallet-2.0.8.zip
 ```
+
+## Main Content
+
+- **hdp_example.ipynb**: Main notebook with code related to article
+
+- **scripts/**: Folder with main scripts used in above notebook
+
+## Additional Content
+
+- **models/**: Folder with pre-saved `tomotopy` models used in article to compare coherences
+
+- **imgs/**: Folder with topic  wordclouds from the best HDP `tomotopy` model (it made it easier to check them vs the true labels)
+
+- **objective_topic_labels.ipynb**: Additional notebook to play around with a `tomotopy` method that automatically labels topics
+
+- **additional_data**: NIPS abstract data to test out

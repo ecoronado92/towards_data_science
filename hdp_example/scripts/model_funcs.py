@@ -14,12 +14,11 @@ def train_HDPmodel(hdp, word_list, mcmc_iter, burn_in=100, quiet=False):
     hdp: obj -> initialized HDPModel model
     word_list: list -> lemmatized word list of lists
     mcmc_iter : int -> number of iterations to train the model
-    burn_in: int -> MCMC burn in iterations
+    burn_in: int -> MC burn in iterations
     quiet: bool -> flag whether to print iteration LL and Topics, if True nothing prints out
     
     ** Returns**
     hdp: trained HDP Model 
-    topics: dictionary -> contains model topics with top 10 words and frequencies
     '''
     
     # Add docs to train
@@ -45,11 +44,12 @@ def train_HDPmodel(hdp, word_list, mcmc_iter, burn_in=100, quiet=False):
     return hdp
     
         
-def get_hdp_topics(hdp):
+def get_hdp_topics(hdp, top_n=10):
     '''Wrapper function to extract topics from trained tomotopy HDP model 
     
     ** Inputs **
     hdp:obj -> HDPModel trained model
+    top_n: int -> top n words in topic based on frequencies
     
     ** Returns **
     topics: dict -> per topic, an arrays with top words and associated frequencies 
@@ -64,7 +64,7 @@ def get_hdp_topics(hdp):
     for k in sorted_topics:
         if not hdp.is_live_topic(k): continue # remove un-assigned topics at the end (i.e. not alive)
         topic_wp =[]
-        for word, prob in hdp.get_topic_words(k):
+        for word, prob in hdp.get_topic_words(k, top_n=top_n):
             topic_wp.append((word, prob))
 
         topics[k] = topic_wp # store topic word/frequency array
