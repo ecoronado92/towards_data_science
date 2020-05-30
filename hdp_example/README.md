@@ -23,6 +23,8 @@ rm mallet-2.0.8.zip
 
 - **hdp_example.ipynb**: Main notebook with code related to article
 
+- **hdp_demo.ipynb**: Notebook used in article video demo 
+
 - **scripts/**: Folder with main scripts used in above notebook
 
 - **top_dominant.csv**: Table true and predicted topics for documents in data set
