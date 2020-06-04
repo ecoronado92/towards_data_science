@@ -1,0 +1,667 @@
+---
+title: "Modeling Uncertainty in Mixed-Effects (Hierarchical) Models"
+subtitle: "Bayesian & Frequentist Modeling bounce rates across counties"
+author: "Eduardo Coronado"
+date: "6/1/2020"
+output:
+  html_document:
+    theme: yeti
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+set.seed(2020)
+
+```
+
+This notebook is intended to provide examples of how Hierarchical (Multilevel / Mixed Effects) Models induce estimate **shrinkage via partial-pooling** (i.e. effect is similar to regularization) for nested data. 
+
+The original dataset is related to website bounce rates and can be found [Kaggle notebook here](https://www.kaggle.com/ojwatson/website-bounce-rates).
+
+The overall goal is to understand **how does the average bounce time in a website change with respect to age across counties**.
+
+
+**Note: For simplicity we're ingnoring the fact that each `county` in the dataset contains different `location`. If you'd like to consider the effect of those locations you can use the `lmer` package to fit a cross-nested model structure.**
+
+
+## Load Packages
+```{r load_packages, message=FALSE}
+require(tidyverse)
+require(dplyr) # dplyr 1.0.0
+require(knitr)
+require(kableExtra)
+require(broom)
+
+# Animation library
+require(gganimate)
+require(gifski)
+require(png)
+
+# Mixed Effects Model libraries
+require(lme4)
+require(brms)
+require(tidybayes)
+require(arm)
+require(bayesplot)
+
+# Prior libraries
+require(extraDistr)
+```
+
+## Load Data
+We first load the data. I've simulated data based on the original data vary the group sizes so that some have few data points and others have more points. Think about this a scenario where some data was corrupted and you can only use a subset of the data points from a county.
+
+It will also help illustrate partial-pooling and how Bayesian methods can help in later sections.
+
+```{r load_data, messages=FALSE}
+bounce_data <- read_csv("../data/bounce_rates_sim.csv", col_types = cols() ) #cols() suppresses messages
+
+kable(bounce_data) %>% 
+kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
+  row_spec(0, background = "#4CAF50", color="#FFF")  %>% 
+  scroll_box(width = "100%", height = "200px") 
+```
+
+We notice there aren't any missing data, but we can center-scale the `age` variable. This is helpful when interpreting the model coefficients in our case (especially when dependent and independent have different scales, e.g. a population varible). 
+
+```{r summary}
+# Check distribution of data
+summary(bounce_data)
+```
+
+## Standardize (center-scale)
+
+In this case, we primarily to avoid having the variance of our linear model estimates to be in different scales (i.e it provides some stability to our estimates). Next, if we didn't standardize (center-scale) the data then the intercept would be interpreted as the "expected bounce rate when a person has 0 years", which doesn't make much sense. To fix this we standardize the `age` variable so we can interpret the effect of the variable as deviations from the mean `age` in the dataset (e.g. "an increase of 1 year increases the expected bounce rate by X amount"). The intercept here can be interpreted as the average `age`.
+
+```{r scale_age}
+# Standardize train and test data
+bounce_data <- bounce_data %>% 
+  mutate(std_age = scale(age)[,1]) %>% 
+  relocate(std_age, .after=age)
+  
+# Example std_age train data
+summary(bounce_data)
+```
+
+## Complete Pooling (Simple Linear Regression)
+
+A simple linear regression on this data would be considered a **complete pooling** scenario because we are grouping all data together and not considering the `county` grouping structure. 
+We can fit this model with the `lm` functions.
+
+We create some test data from the original `bounce_data` by sampling a couple of rows without replacement and a
+
+```{r complete_pool, message=FALSE}
+
+complete_pool <- lm(bounce_time ~ std_age, 
+                      data = bounce_data )
+
+  
+tidy(complete_pool)
+```
+
+### Diagnostics 
+Our linear regression models runs on the assumptiont that 1) data is normally distributed and 2) variance is constant. So we can evaluate our model's fit using a residuals vs fitted plot below. If the assumptions are met, we won't see any trend in the residuals in relation to the predicted values (i.e. they won't increase/decrease with predicted values). However, in our case we see there is a trend which violates this assumption and indicates a **lack of fit**.
+
+
+```{r diagnostic_complete, message=FALSE}
+# Plot diagnostic plot
+qplot(x= .fitted, y= .resid, data = complete_pool, alpha=0.8) +
+  geom_smooth(se = FALSE, size=1) +
+  labs(y="Observed - Predicted", x= "Predicted", 
+      title="Complete pooling model shows slight lack of fit (variance isn't constant)") +
+  theme(legend.position = "none",
+        title = element_text(size=10))
+  
+```
+
+### Evaluation
+
+We also compute the RMSE for this model to set a baseline to compare subsequent models. Overall, this isn't too bad.
+
+```{r rmse_complete}
+# RMSE Helper function
+rmse <- function(ytrue, ypred){
+  mse = mean((ytrue - ypred)^2)
+  return (sqrt(mse))
+}
+
+# Predict on train set
+y_hat <- predict(complete_pool)
+
+kable(tibble(RMSE= rmse(bounce_data$bounce_time, y_hat))) %>% 
+  row_spec(0, background = "#4CAF50", color="#FFF") %>% 
+  kable_styling(full_width = FALSE, position = "left")
+  
+```
+
+## No Pooling (Individual County Linear Regressions)
+
+Next let's explore the scenario where there is **no pooling** (i.e. we consider each county invdividually and fit a linear model to each) to see if this improves fit and performance. First, lets make sure this makes sense and that each county has can be considered an individual group.
+
+```{r var_county_boxplot}
+# Check if there's variability across groups
+ggplot(bounce_data, aes(x=county , y=bounce_time, fill=county)) +
+  geom_boxplot(alpha =0.7) +
+  labs(x="County", y="Bounce Time", 
+       title="Bounce times variance and means seem to be different across county groups") +
+  theme(legend.position = "none")
+
+
+```
+
+
+
+> **(Note: this model throws out a warning regarding a "singular fit" which will be relevant in subsequent section and  the Bayesian section. It simply means the model specified is too complex to fit given the data. This can happen when we try to estimate multiple random effects (e.g. random intercept AND slope) for groups with small sample sizes)**
+
+
+```{r no_pool, warning=FALSE, message=FALSE}
+# No pool model fit (i.e. no fixed effects)
+no_pool <- lmList(bounce_time ~ std_age|county, data = bounce_data)
+
+summary(no_pool)
+```
+
+
+### Diagnostics
+It seems that adding individual trendlines seems to improve the model's fit given we only see a minor trends on the right side of the plot.
+
+```{r diagnostic_no, message=FALSE}
+# Plot diagnostic plot
+no_pool_df <- tibble(fit = fitted(no_pool),
+                     resid = residuals(no_pool))
+
+qplot(x= fit, y= resid, data = no_pool_df, alpha=0.8) +
+  geom_smooth(se = FALSE, size=1) +
+  labs(y="Observed - Predicted", x= "Predicted", 
+      title="No pooling model shows better fit (variance isn't heteroscedastic)") +
+  theme(legend.position = "none")
+  
+```
+
+### Evaluation 
+This model improves the **predictive performance** compared to the **complete pool** model, which is expected if fit a regression line for each group individually. 
+
+
+```{r rmse_no_pooling}
+# Predict on train set
+y_hat_np <- predict(no_pool)
+
+# Get RMSEs to compare
+np_preds <- tibble(rmse = "RMSE",
+                   complete_pool =rmse(bounce_data$bounce_time, y_hat),
+                   no_pool= rmse(bounce_data$bounce_time, y_hat_np)) %>% 
+  column_to_rownames(., var="rmse")
+               
+# Table
+kable(np_preds, digits = 3) %>% 
+  row_spec(0, background = "#4CAF50", color="#FFF") %>% 
+  kable_styling(full_width = FALSE, position = "left")
+```
+
+This sounds appealing if you're interested in predictive performance, however given we must be careful when it comes to interpretation and make sure it answers our original goal. 
+
+1. First of all, some of the group estimates were computed with very small sizes (e.g. $n = 7$) which can lead higher variance and out-of-sample RMSE (e.g. a new data point / outlier might change the trendline direction completely).  
+2. Second, are reducing the sample size to the sample sizes per groups which might lead to Type 1 error when performing multiple comparisons. 
+3. Most importantly, the model doesn't account for relationships or correlations between the groups and **doesn't help us answer the original question of how age affects bounce times across counties**.
+
+```{r no_pool_graph, message=FALSE}
+# Plot no pool OLS fits per county
+ggplot(bounce_data, aes(x=std_age, y=bounce_time, color=county)) +
+  geom_point(alpha=0.5) +
+  stat_smooth(method = "lm", se = FALSE) +
+  facet_wrap(~county) +
+  labs(x="Age (standardize)", y="Bounce Time",
+       title="Kent and Essex's estimated trendlines rely on very few data points") +
+  theme(legend.position = "none", 
+        title = element_text(size=10))
+  
+```
+
+### Complete pooling to no pooling 
+
+So how does this look like in terms of the estimated slope and intercept parameters? The animation below shows how the `intercept` and `std_age` estimates change when we consider all points as part of one group (complete pool) vs. as independent groups (no pool). 
+
+Here we see an example of Simpson's paradox where the slope `std_age` is way larger higher when grouping isn't considered compared to when grouping is considered.
+
+```{r pool_no_pool_animate}
+# Build df for anitmation, first with no pool coefs
+pool_to_nopool <- tibble(model="no_pool",
+                         intercept= coef(no_pool)[,1],
+                         slope = coef(no_pool)[,2])
+
+# Add complete pool coefs (needs to add repeats)
+tmp_df <- tibble(model="complete_pool",
+                 intercept=rep(coef(complete_pool)[1], nrow(pool_to_nopool)),
+                 slope = rep(coef(complete_pool)[2], nrow(pool_to_nopool)))
+
+pool_to_nopool <- bind_rows(pool_to_nopool, tmp_df)
+
+# Animate
+animate(ggplot(pool_to_nopool, aes(x =intercept, y=slope)) +
+          geom_point(aes(color=model, group=1L)) +
+          scale_color_discrete(name="", 
+                             labels=c("Complete Pooling", "No Pooling")) +
+          labs(x=expression(paste(hat(beta[0]), " (Intercept)")),
+               y=expression(paste(hat(beta[1]), " (Standardized Age)")),
+               title="What happens to estimates when we go from complete pooling to no pooling?") +
+          theme_bw()+
+          theme(legend.position="bottom",
+                title= element_text(size=7)) +
+          transition_states(model, transition_length = 1, state_length = 1,
+                            wrap=FALSE) +
+          shadow_wake(wake_length = 0.1, alpha = FALSE),
+  res=120, width=700)
+
+```
+
+
+## Partial-Pooling (Hierarchical / Mixed-Effects Model)
+
+Here's were taking into account the nested (hierarchical structure) can help mitigate some of the issues listed above and also helps us answer the initial question.
+
+Here I considered  random intercept and  slopes per county as part of this model. (Note: you could consider models with either of these and see if it performs better than including both). 
+
+In the output below, we can see that most of the between-county variance is explain by the random intercept.
+
+```{r lmm_model, warning=FALSE, message=FALSE}
+# Fit mixed effects model with varying slope and intercept
+lmm <- lmer(bounce_time ~ 1 + std_age + (1 + std_age|county), data=bounce_data)
+
+summary(lmm)
+```
+
+### Diagnostics 
+
+The fitted vs residual plots looks good with no trend, however it very similar to that of the no pooling model.
+
+```{r lmm_diagnostic}
+# Build diagnostic plot
+partial_pool_df <- tibble(fit = fitted(lmm),
+                     resid = residuals(lmm))
+
+qplot(x= fit, y= resid, data = partial_pool_df, alpha=0.8) +
+  geom_smooth(se = FALSE, size=1) +
+  labs(y="Observed - Predicted", x= "Predicted", 
+      title="No pooling model shows better fit (variance isn't heteroscedastic)") +
+  theme(legend.position = "none")
+
+
+```
+
+Let's compare how it compares in a Q-Q plot to check if the normality assumption is met. Here we expect sample to follow the theoretical quantiles of a normal (black line).
+
+We see that the partial-pooling model (Mixed Effects) is slightly better in that it's residuals are closer to the 1-1 line, especially on the tails compared to the no pool model.
+
+```{r qq_lmm_nopool}
+# compare if partial pool and no pool residual distributions are normal
+qq_df <- tibble(partial_resid = resid(lmm),
+                no_pool_resid = resid(no_pool)) %>% 
+  pivot_longer(cols = c("partial_resid", "no_pool_resid"),
+              names_to="model", values_to="residuals")
+
+ggplot(qq_df, aes(sample=residuals, color=model )) +
+  stat_qq(alpha=0.5, size=3) + 
+  stat_qq_line(color="black") +
+  labs(x="Theoretical Quantiles", y="Sample Quantiles",
+       title="Normal Q-Q plot: both models have nearly identical residual normal distributions") +
+  theme(title=element_text(size=10))
+
+```
+
+
+### Evaluation
+The RMSE of the no pool is slightly smaller, so predictive performance doesn't really improve with partial pooling in our scenario. However, we are now able to answer the initial questions which we weren't able to answer with the no pool model.
+
+```{r lmm_rmse}
+# Generate predictions
+lmm_yhat <- predict(lmm)
+
+# Add partial pool RMSE
+np_preds <- np_preds %>% 
+  mutate(partial_pool = rmse(bounce_data$bounce_time, lmm_yhat))
+
+# Compare to other models
+kable(np_preds, digits = 3) %>% 
+  row_spec(0, background = "#4CAF50", color="#FFF") %>% 
+  kable_styling(full_width = FALSE, position = "left")
+```
+
+
+### No pooling to partial-pooling {.tabset .tabset-fade .tabset-pills}
+
+So why is this happening and how does this look like? 
+
+It is happens because now we are assuming the groupings come from the same population instead of independent groups from distinct populations (no pool), and thus these share characteristics to some degree. 
+
+Here we can observe the shrinkage of estimates and standard errors (SE) for each of the random effects (i.e. intercept and slope per county). 
+
+However, it is important to note that fitting this model also led to `singular fit` warnings which indicate instability. (see shrinkage of `std_age` estimate tab for more info)
+
+> Note: it is important to remember that shrinkage might not be desired in some cases. For example, if our response is mortality rates in hospitals we might not want to "shrink" mortalities of smaller hospitals just because they have a smaller sample size. It might lead to erroneous interpretations.
+
+#### Shrinkage `std_age` and intercept
+
+Here we can observe how shrinkage changes between the complete pooling, no pooling and partial pooling models. 
+
+**However, why do some county estimates exhibit larges changes (i.e. more displacement) between the no pool and partial pool models? (see next tab for answers)**
+
+```{r shrinkage_beta0_beta1}
+pool_to_nopool <- bind_rows(pool_to_nopool,
+                             tibble(model = 'partial_pool',
+                                    intercept=coef(lmm)$county[,1],
+                                    slope=coef(lmm)$county[,2]))
+
+# Animate
+animate(ggplot(pool_to_nopool, aes(x =intercept, y=slope)) +
+          geom_point(aes(color=model, group=1L)) +
+          geom_hline(aes(yintercept=coef(complete_pool)[2]), 
+                     color="black", alpha=0.4) +
+          geom_text(aes(label ="Complete pool",
+                         x= 183, y=coef(complete_pool)[2]-0.5),
+                    size=3) +
+          scale_color_discrete(name="", 
+                             labels=c("Complete Pooling", "No Pooling", 
+                                      "Partial Pooling")) +
+          labs(x=expression(paste(hat(beta[0]), " (Intercept)")),
+               y=expression(paste(hat(beta[1]), " (Standardized Age)")),
+               title="Effects on std_age and intercept estimates for various pooling models") +
+          theme_bw()+
+          theme(legend.position="bottom",
+                title= element_text(size=7)) +
+          transition_states(model, transition_length = 1, state_length = 1,
+                            wrap=FALSE) +
+          shadow_wake(wake_length = 0.2, alpha = FALSE),
+  res=120, width=700)
+
+```
+
+
+#### Shrinkage of Intercept estimate
+
+It happens because the partial pool random estimates for a particular group $j$ are related to the group's sample size $n_j$, and the complete pool $\bar{y}_{all}$ and unpooled $\bar{y_j}$ estimates through a weighted average. It also includes population level variance $\sigma^2$ and group variances $\tau^2$
+
+$$\hat{\alpha}_j \approx \frac{\frac{n_j}{\sigma^2}\bar{y_j} + \frac{1}{\tau^2}\bar{y}_{all}}{\frac{n_j}{\sigma^2} + \frac{1}{\tau^2} }$$
+
+Observe below how both the estimates and standard errors (SE) shrink when we fit the mixed effects model (partial pooling). The effect is stronger in groups with small sample sizes and less so in those with larger sample sizes. 
+
+This is why we say that estimates in hierarchical models "borrow strength". Those with small sample sizes borrow more strength from those with larger samples (which makes sense because larger sample size -> more information -> more stable estimates)
+
+```{r shrinkage_estimates_beta0}
+# Collect all confidence intervals and estimates
+ci_np <- confint(no_pool) # 95% confidence interval
+ci_pp <- se.coef(lmm)$county
+
+np_betas <- coef(no_pool) # estimates no pool
+pp_betas <- coef(lmm)$county
+
+# Prepare data for intercept shrinkage animation
+county_n <- bounce_data %>% group_by(county) %>% count()
+beta0_df <- tibble(model = "No Pool",
+                  estimate = np_betas[,1],
+                  lower = ci_np[,,"(Intercept)"][,1],
+                  upper = ci_np[,,"(Intercept)"][,2])
+
+beta0_pp <- tibble(model = "Partial Pool",
+                 estimate = pp_betas[,1]) %>% 
+  mutate(lower = estimate - 1.96*ci_pp[,1],
+         upper = estimate + 1.96*ci_pp[,1])
+
+beta0_df <- bind_rows(beta0_df, beta0_pp) %>% 
+  mutate(n = rep(county_n$n, 2))
+
+
+animate(ggplot(beta0_df, aes(x=n, y=estimate)) +
+          geom_point(aes(color=model, group=1L), size= 2, alpha=0.4) +
+          geom_errorbar(aes(ymin = lower, ymax = upper, color=model, group=1L),
+                        width=6) +
+          geom_hline(aes(yintercept =coef(complete_pool)[1]), 
+                     color="black", alpha=0.4) +
+          geom_text(aes(label ="Pop avg",
+                         x= 10, y =coef(complete_pool)[1]-2),
+                    size=3)+
+          scale_color_discrete(name="", 
+                             labels=c("No Pooling", "Partial Pooling")) +
+          labs(y=expression(paste(hat(beta[0]), " (Intercept) Estimate")),
+               x="Group sample size (n)",
+               title="Partial-pooling srhinks no-pooling Intercept estimates and Std Errors") +
+          theme_bw()+
+          theme(legend.position="bottom",
+                title= element_text(size=7)) +
+          transition_states(model, transition_length = 0.7, state_length = 1,
+                            wrap=FALSE),
+        res=120, width=700, height=600)
+
+```
+
+#### Shrinkage of `std_age` estimate
+
+Recall the `singular fit` message mentioned earlier in this document. The diagram below showcases the results of that warning which indicates a the model is too complex for the amount of data available in each group. 
+
+If we fit a model with no random slope **we don't get the `singular fit` error** and our RMSE is nearly the same to the one including the random slope.
+
+```{r}
+rintercept <- lmer(bounce_time ~ std_age + (1|county), data=bounce_data)
+
+np_preds <- np_preds %>% 
+  mutate(rintercept_only = rmse(bounce_data$bounce_time, 
+                                predict(rintercept)))
+
+# Table
+kable(np_preds, digits = 3) %>% 
+  row_spec(0, background = "#4CAF50", color="#FFF") %>% 
+  kable_styling(full_width = FALSE, position = "left")
+```
+
+This means that the random intercept estimate takes into account most of the between-county variability. Thus, in simple terms, when we attempt to estimate the random slope with the remaining variance from sample sampel sizes, the model can't produce stable estimates using this remaining info. Therefore, we observe a slight shrinkage of the estimates but extreme for the standard errors.
+
+**Here is a situation where a Bayesian framework can assist and provide stable estimates.**
+
+
+```{r shrinkage_age_estim}
+beta1_df <- tibble(model = "No Pool",
+                  estimate = np_betas[,2],
+                  lower = ci_np[,,"std_age"][,1],
+                  upper = ci_np[,,"std_age"][,2])
+
+beta1_pp <- tibble(model = "Partial Pool",
+                 estimate = pp_betas[,2]) %>% 
+  mutate(lower = estimate - 1.96*ci_pp[,2],
+         upper = estimate + 1.96*ci_pp[,2])
+
+beta1_df <- bind_rows(beta1_df, beta1_pp) %>% 
+  mutate(n = rep(county_n$n, 2))
+
+
+animate(ggplot(beta1_df, aes(x=n, y=estimate)) +
+          geom_point(aes(color=model, group=1L), size=2, alpha=0.4) +
+          geom_errorbar(aes(ymin = lower, ymax = upper, color=model, group=1L),
+                        width= 6) +
+          geom_hline(aes(yintercept =coef(complete_pool)[2]), 
+                     color="black", alpha=0.4) +
+          geom_text(aes(label ="Pop avg",
+                         x= 10, y =coef(complete_pool)[2]+0.5),
+                    size=3)+
+          scale_color_discrete(name="", 
+                             labels=c("No Pooling", "Partial Pooling")) +
+          labs(y=expression(paste(hat(beta[1]), " (std_age) Estimate")),
+               x="Group sample size (n)",
+               title="Partial-pooling shrinks no-pooling slope (std_age) estimates and Std Errors") +
+          theme_bw()+
+          theme(legend.position="bottom",
+                title= element_text(size=7)) +
+          transition_states(model, transition_length = 0.7, state_length = 1,
+                            wrap=FALSE),
+        res=120, width=700, height=600)
+
+```
+
+
+
+
+## Bayesian Mixed-Effects Models
+
+Here we will use the `brms` library which, given it uses a similar syntax as the `lme4` functions above, it makes it very simple to implement a Bayesian hierarchical model using `stan`.
+
+### Selecting a prior
+We quickly do some prior predictive checks with simulated data to choose some weakly informative priors
+
+```{r}
+# Simulate 
+y_sim <- rep(0,nrow(bounce_data))
+for (i in 1:nrow(bounce_data)){
+  sigma <- rhcauchy(1, sigma = 1)
+  mu <- rnorm(1, mean=200, sd=100) + (rnorm(1, mean=1, sd=1)*bounce_data$std_age[i])
+  y_sim[i] <- rnorm(1, mean=mu, sd=sigma)
+}
+
+tibble(bounce_time = bounce_data$bounce_time, sim_data = y_sim) %>% 
+  ggplot(., aes(x=bounce_time, y=sim_data)) +
+  geom_point() +
+  labs(x="Empirical bounce times", y="Simulated data")
+```
+
+### Modeling
+
+We can now fit the `brms` model and obtain estimates for the county intercepts and slopes with associated 95% Credible Intervals. Note that the credible interval for the `std_age` variable are more stable instead of vanishing.
+
+```{r}
+bayes_lmm <- brm(bounce_time ~ 1 + std_age + (1 + std_age|county), 
+                 data=bounce_data,
+                 family=gaussian(),
+                 prior= c(prior(normal(0, 10), class = Intercept),
+                          prior(normal(0, 10), class = b),
+                          prior(cauchy(0, 1), class = sigma),
+                          prior(cauchy(0, 1), class = sd)),
+                 warmup = 2000, 
+                 iter = 5000, 
+                 chains = 2, control = list(adapt_delta = 0.95))
+
+coef(bayes_lmm)
+```
+
+### Diagnostics {.tabset .tabset-fade .tabset-pills}
+Here we can make use of the `bayesplot` package
+
+#### Posterior predictive distribution `bounce_time`
+
+```{r}
+color_scheme_set("red")
+ppc_dens_overlay(y = bounce_data$bounce_time,
+                 yrep = posterior_predict(bayes_lmm, nsamples = 50)) +
+  labs(x="Bounce time (secs)") +
+  panel_bg(fill = "gray95", color = NA) +
+  grid_lines(color = "white")
+```
+
+
+#### Posterior predictive checks per county
+
+```{r message=FALSE, warning=FALSE}
+color_scheme_set("brightblue")
+bayes_lmm %>%
+  posterior_predict(nsamples = 500) %>%
+  ppc_stat_grouped(y = bounce_data$bounce_time,
+                   group = bounce_data$county,
+                   stat = "mean") +
+  labs(x= "Bounce times (ms)") +
+  panel_bg(fill = "gray95", color = NA) +
+  grid_lines(color = "white")
+
+
+```
+
+
+#### Posterior predictive checks: MCMC Divergence
+
+```{r}
+color_scheme_set("darkgray")
+mcmc_scatter(
+  as.matrix(bayes_lmm),
+  pars = c("sd_county__Intercept",
+           "r_county[london,Intercept]"),
+  np = nuts_params(bayes_lmm),
+  np_style = scatter_style_np(div_color = "green", div_alpha = 0.8)
+) +
+  labs(x = "Standard Dev of County X Intercept",
+       y= "Intercept of County",
+       titles = "(No green dots means no divergence, thus good mixing and non-curvy posterior)")
+
+```
+
+
+### Evaluation
+
+Same performance, but let's look at what happens to the `std_age` estimates and errors when we use a Bayesian framework 
+
+```{r}
+y_hat_bayes <- colMeans(posterior_predict(bayes_lmm,
+                                         nsamples=1000))
+
+# Add Bayes RMSE
+np_preds <- np_preds %>% 
+  mutate(bayes = rmse(bounce_data$bounce_time, y_hat_bayes))
+
+# Compare to other models
+kable(np_preds, digits = 3) %>% 
+  row_spec(0, background = "#4CAF50", color="#FFF") %>% 
+  kable_styling(full_width = FALSE, position = "left")
+
+```
+
+
+### Shrinkage of `std_age` estimate (Bayes)
+
+```{r}
+bayes_beta1 <- coef(bayes_lmm)$county[,,"std_age"] %>% 
+  data.frame() %>% 
+  dplyr::select(-Est.Error) %>% 
+  mutate(model ="PP Bayes",
+         n=county_n$n)
+
+colnames(bayes_beta1) <- c("estimate", "lower", "upper",
+                           "model", "n")
+
+beta1_df <- bind_rows(beta1_df, bayes_beta1)
+
+
+animate(ggplot(beta1_df, aes(x=n, y=estimate)) +
+          geom_point(aes(color=model, group=1L), size=2, alpha=0.4) +
+          geom_errorbar(aes(ymin = lower, ymax = upper, color=model, group=1L),
+                        width= 6) +
+           geom_hline(aes(yintercept =coef(complete_pool)[2]), 
+                     color="black", alpha=0.4) +
+          geom_text(aes(label ="Pop avg",
+                         x= 10, y =coef(complete_pool)[2]+0.5),
+                    size=3) +
+          scale_color_discrete(name="", 
+                             labels=c("No pool", "Freq PP", "Bayes PP")) +
+          labs(y=expression(paste(hat(beta[1]), " (std_age) Estimate")),
+               x="Group sample size (n)",
+               title="Bayesian Partial-Pooling doesn't shrink Std Errors as much as the Frequentist PP model ") +
+          theme_bw()+
+          theme(legend.position="bottom",
+                title= element_text(size=7)) +
+          transition_states(model, transition_length = 0.8, state_length = 1.2,
+                            wrap=FALSE),
+        res=120, width=700, height=600)
+```
+
+
+### Bayesian linear fits
+
+Here we see that for counties with more samples the predicted linear trends are very close together (we are more certain of those ones). In comparison, the trends in counties with small sample show lots of uncertainty (i.e. larger estimation errors).
+
+```{r}
+
+add_fitted_draws(model=bayes_lmm, newdata=bounce_data, n = 100) %>%        
+  ggplot(aes(x = std_age, y = bounce_time, color=county) ) +
+  geom_point() +
+  geom_line(aes(y = .value, group = .draw), alpha = 1/15, color = "#08519C") +
+  facet_wrap(~county, scales="free") +
+  theme(legend.position = "none")
+
+
+```
