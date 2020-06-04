@@ -246,7 +246,7 @@ animate(ggplot(pool_to_nopool, aes(x =intercept, y=slope)) +
                              labels=c("Complete Pooling", "No Pooling")) +
           labs(x=expression(paste(hat(beta[0]), " (Intercept)")),
                y=expression(paste(hat(beta[1]), " (Standardized Age)")),
-               title="What happens to estimates when we go from complete pooling to no pooling?") +
+               title="In the no pooling model each county has its own slope and intercept") +
           theme_bw()+
           theme(legend.position="bottom",
                 title= element_text(size=7)) +
@@ -357,11 +357,6 @@ pool_to_nopool <- bind_rows(pool_to_nopool,
 # Animate
 animate(ggplot(pool_to_nopool, aes(x =intercept, y=slope)) +
           geom_point(aes(color=model, group=1L)) +
-          geom_hline(aes(yintercept=coef(complete_pool)[2]), 
-                     color="black", alpha=0.4) +
-          geom_text(aes(label ="Complete pool",
-                         x= 183, y=coef(complete_pool)[2]-0.5),
-                    size=3) +
           scale_color_discrete(name="", 
                              labels=c("Complete Pooling", "No Pooling", 
                                       "Partial Pooling")) +
@@ -375,6 +370,7 @@ animate(ggplot(pool_to_nopool, aes(x =intercept, y=slope)) +
                             wrap=FALSE) +
           shadow_wake(wake_length = 0.2, alpha = FALSE),
   res=120, width=700)
+
 
 ```
 
@@ -433,6 +429,7 @@ animate(ggplot(beta0_df, aes(x=n, y=estimate)) +
           transition_states(model, transition_length = 0.7, state_length = 1,
                             wrap=FALSE),
         res=120, width=700, height=600)
+
 
 ```
 
@@ -495,6 +492,7 @@ animate(ggplot(beta1_df, aes(x=n, y=estimate)) +
           transition_states(model, transition_length = 0.7, state_length = 1,
                             wrap=FALSE),
         res=120, width=700, height=600)
+
 
 ```
 
@@ -647,6 +645,8 @@ animate(ggplot(beta1_df, aes(x=n, y=estimate)) +
           transition_states(model, transition_length = 0.8, state_length = 1.2,
                             wrap=FALSE),
         res=120, width=700, height=600)
+
+
 ```
 
 
