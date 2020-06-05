@@ -77,12 +77,12 @@ summary(bounce_data)
 In this case, we primarily to avoid having the variance of our linear model estimates to be in different scales (i.e it provides some stability to our estimates). Next, if we didn't standardize (center-scale) the data then the intercept would be interpreted as the "expected bounce rate when a person has 0 years", which doesn't make much sense. To fix this we standardize the `age` variable so we can interpret the effect of the variable as deviations from the mean `age` in the dataset (e.g. "an increase of 1 year increases the expected bounce rate by X amount"). The intercept here can be interpreted as the average `age`.
 
 ```{r scale_age}
-# Standardize train and test data
+# Standardize data
 bounce_data <- bounce_data %>% 
   mutate(std_age = scale(age)[,1]) %>% 
   relocate(std_age, .after=age)
   
-# Example std_age train data
+# Example std_age data
 summary(bounce_data)
 ```
 
@@ -91,15 +91,23 @@ summary(bounce_data)
 A simple linear regression on this data would be considered a **complete pooling** scenario because we are grouping all data together and not considering the `county` grouping structure. 
 We can fit this model with the `lm` functions.
 
-We create some test data from the original `bounce_data` by sampling a couple of rows without replacement and a
 
 ```{r complete_pool, message=FALSE}
+
 
 complete_pool <- lm(bounce_time ~ std_age, 
                       data = bounce_data )
 
   
 tidy(complete_pool)
+```
+
+```{r}
+ggplot(bounce_data, aes(x=std_age, y=bounce_time, color=county)) +
+  geom_point(alpha=0.5) +
+  geom_abline(aes(intercept=coef(complete_pool)[1], slope=coef(complete_pool)[2])) +
+  labs(x="Standardized Age", y="Bounce time", title="Simple linear regression (population trendline)") 
+
 ```
 
 ### Diagnostics 
@@ -377,9 +385,9 @@ animate(ggplot(pool_to_nopool, aes(x =intercept, y=slope)) +
 
 #### Shrinkage of Intercept estimate
 
-It happens because the partial pool random estimates for a particular group $j$ are related to the group's sample size $n_j$, and the complete pool $\bar{y}_{all}$ and unpooled $\bar{y_j}$ estimates through a weighted average. It also includes population level variance $\sigma^2$ and group variances $\tau^2$
+It happens because the partial pool parameter estimates for a particular group $j$ are related to the group's sample size $n_j$, and the complete pool and unpooled estimates. For example, in a varying-intercept model the average `bounce_time` per county $j$ would be a function of the complete pool $\bar{y}_{all}$ and unpooled $\bar{y_j}$ estimates through a weighted average. It also includes population level variance $\sigma^2$ and group variances $\tau^2$
 
-$$\hat{\alpha}_j \approx \frac{\frac{n_j}{\sigma^2}\bar{y_j} + \frac{1}{\tau^2}\bar{y}_{all}}{\frac{n_j}{\sigma^2} + \frac{1}{\tau^2} }$$
+$$\hat{\alpha}_j \approx \frac{\frac{n_j}{\sigma^2}}{\frac{n_j}{\sigma^2} + \frac{1}{\tau^2}}\bar{y}_j + \frac{ \frac{1}{\tau^2}}{\frac{n_j}{\sigma^2} + \frac{1}{\tau^2}}\bar{y}_{all}$$
 
 Observe below how both the estimates and standard errors (SE) shrink when we fit the mixed effects model (partial pooling). The effect is stronger in groups with small sample sizes and less so in those with larger sample sizes. 
 

@@ -6,6 +6,12 @@ The toy dataset was implemented and analyzed in Python using two packages `stats
 
 These materials are related to the following Towards Data Science article:
 
+## Dependencies
+
+The Rmarkdown contains all dependencies in `R` and should install any missing ones when compiled.
+
+For the Jupyter notebook you'll need some Python and R dependencies to run the examples, **especially using `pymer4` which is a Python wrapper of the `R` `lme4` package** (you should make sure you have R installed and the `lme4` and `lmerTest` package downloaded to run this package)
+
 
 ## Main Content
 
