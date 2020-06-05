@@ -2,4 +2,4 @@
 
 The following repo contains code for Towards Data Science articles.
 
-[Link to arcticles](https://medium.com/@eduardo.coronado92)
+[Link to arcticles](https://medium.com/@ecoronado92)
