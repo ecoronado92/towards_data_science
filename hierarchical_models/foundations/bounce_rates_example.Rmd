@@ -387,7 +387,7 @@ animate(ggplot(pool_to_nopool, aes(x =intercept, y=slope)) +
 
 It happens because the partial pool parameter estimates for a particular group $j$ are related to the group's sample size $n_j$, and the complete pool and unpooled estimates. For example, in a varying-intercept model the average `bounce_time` per county $j$ would be a function of the complete pool $\bar{y}_{all}$ and unpooled $\bar{y_j}$ estimates through a weighted average. It also includes population level variance $\sigma^2$ and group variances $\tau^2$
 
-$$\hat{\alpha}_j \approx \frac{\frac{n_j}{\sigma^2}}{\frac{n_j}{\sigma^2} + \frac{1}{\tau^2}}\bar{y}_j + \frac{ \frac{1}{\tau^2}}{\frac{n_j}{\sigma^2} + \frac{1}{\tau^2}}\bar{y}_{all}$$
+$$\hat{\alpha}_j \approx \frac{\frac{n_j}{\sigma^2}}{\frac{n_j}{\sigma^2} + \frac{1}{\tau^2}}(\bar{y}_j - \beta x) + \frac{ \frac{1}{\tau^2}}{\frac{n_j}{\sigma^2} + \frac{1}{\tau^2}}\bar{y}_{all}$$
 
 Observe below how both the estimates and standard errors (SE) shrink when we fit the mixed effects model (partial pooling). The effect is stronger in groups with small sample sizes and less so in those with larger sample sizes. 
 

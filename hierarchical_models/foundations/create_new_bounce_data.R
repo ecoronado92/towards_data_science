@@ -33,13 +33,12 @@ for (i in 1:nrow(suff_stats)){
   
 
   tmp_county = tibble(bounce_time = sim_times,
-                      age = sim_ages,
+                      age = round(sim_ages),
                       county = county_subset[i])
   
   sim_df <- bind_rows(sim_df, tmp_county)
     
 }
 
-
 # Save as csv
-write_csv(new_data, path="../data/bounce_rates.csv")
+write_csv(sim_df, path="../data/bounce_rates_sim.csv")
