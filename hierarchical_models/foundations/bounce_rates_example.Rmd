@@ -80,7 +80,7 @@ In this case, we primarily to avoid having the variance of our linear model esti
 # Standardize data
 bounce_data <- bounce_data %>% 
   mutate(std_age = scale(age)[,1]) %>% 
-  relocate(std_age, .after=age)
+  dplyr::relocate(std_age, .after=age)
   
 # Example std_age data
 summary(bounce_data)
@@ -537,8 +537,8 @@ We can now fit the `brms` model and obtain estimates for the county intercepts a
 bayes_lmm <- brm(bounce_time ~ 1 + std_age + (1 + std_age|county), 
                  data=bounce_data,
                  family=gaussian(),
-                 prior= c(prior(normal(0, 10), class = Intercept),
-                          prior(normal(0, 10), class = b),
+                 prior= c(prior(normal(200, 100), class = Intercept),
+                          prior(normal(1, 1), class = b),
                           prior(cauchy(0, 1), class = sigma),
                           prior(cauchy(0, 1), class = sd)),
                  warmup = 2000, 
@@ -654,7 +654,7 @@ animate(ggplot(beta1_df, aes(x=n, y=estimate)) +
                             wrap=FALSE),
         res=120, width=700, height=600)
 
-
+anim_save("beta1_shrinkage_bayes.gif", path = "gif/")
 ```
 
 
