@@ -1,4 +1,4 @@
-# Linear Hierarchical / Multilevel / Mixed Effects Models
+# Bayesian Linear Hierarchical / Multilevel / Mixed Effects Models
 
 Repo contains materials and examples  implementing a Bayesian **Linear Mixed Effects (Hierarchical models)**  on simulated bounce rate data.
 
