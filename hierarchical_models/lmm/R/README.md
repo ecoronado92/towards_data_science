@@ -1,4 +1,4 @@
-# Linear Hierarchical / Multilevel / Mixed Effects Models in R
+# Bayesian Linear Mixed Effects Models in R
 
 Repo contains materials covering how to implementing, diagnose and evaluate a linear hierarchical model using a Bayesian framework.
 
