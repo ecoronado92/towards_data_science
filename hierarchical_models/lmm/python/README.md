@@ -1,4 +1,4 @@
-# Hierarchical / Multilevel / Mixed Effects Models in Python
+# Bayesian Mixed Effects Models in Python
 
 Repo contains materials covering how to implementing, diagnose and evaluate a hierarchical model using a Bayesian framework.
 
