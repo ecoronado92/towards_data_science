@@ -30,6 +30,7 @@ require(kableExtra)
 require(gridExtra)
 require(grid)
 require(ggpubr)
+require(modelr)
 
 # Animation library
 require(gganimate)
@@ -878,6 +879,34 @@ bayes_rintercept %>%
           subtitle = "Median + 95% HPD Interval ") +
   theme_bw() +
   theme(legend.position = "None")
+```
+
+We can also visualize the expected posterior predicted lines and associated uncertainty using `add_fitted_draws` 
+
+```{r}
+
+bounce_data %>% 
+  group_by(county) %>% 
+  data_grid(std_age = seq_range(std_age, n = 101)) %>% 
+  add_fitted_draws(bayes_rintercept, n=100) %>%
+  ggplot(aes(x = std_age, y = bounce_time, color = ordered(county))) +
+  stat_lineribbon(aes(y = .value), alpha=0.9) +
+  geom_point(data = bounce_data, alpha=0.7) +
+  theme_bw() +
+  scale_fill_brewer(palette = "Greys") +
+  scale_color_brewer(palette = "Dark2", guide="none") +
+  facet_wrap(~county, scales = "free") +
+  theme(legend.position = "bottom",
+        legend.text = element_text(size=8),
+        legend.title = element_text(size=8),
+        axis.title = element_text(size=8),
+        axis.text = element_text(size=8)) +
+  labs(fill= "Confidence level", x = "Age (standardize)", y="Bounce time (s)") +
+  ggtitle("Expected Posterior predicted fits + 95% CI",
+          subtitle = "Counties with less samples exhibit higher uncertainty")
+
+
+
 ```
 
 ## References
