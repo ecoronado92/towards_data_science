@@ -268,7 +268,7 @@ for (i in 1:length(seed_nums)){
   # Simulated df
   sims <- tibble(sim_no = i,
                  raw = bounce_data$bounce_time,
-                 y_sim = beta0 + b0[bounce_data$county] + beta1*bounce_data$std_age + epsilon)
+                 y_sim = beta0 + b0[bounce_data$county] + (b1[bounce_data$county] + beta1)*bounce_data$std_age + epsilon)
   
   sim_df <- bind_rows(sim_df, sims)
   
