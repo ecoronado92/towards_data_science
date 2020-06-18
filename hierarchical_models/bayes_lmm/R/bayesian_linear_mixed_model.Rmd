@@ -280,6 +280,7 @@ animate(ggplot(sim_df, aes(x=raw, y=y_sim)) +
   ggtitle("Random intercept/slope model: notice changing y-axis, values are plausible yet not identical",
     subtitle = 'Simulation #: {closest_state}') +
   labs(x= "Bounce rates (sec)", y="Simulated rates (secs)") +
+  theme(title= element_text(size=7)) +
   transition_states(as.factor(sim_no),
                     transition_length = 1,
                     state_length = 10) +
