@@ -605,6 +605,7 @@ skew <- function(y){
   return(skew_stat)
 }
 
+
 # Helper function to plot PPC test statistic plots
 posterior_stat_plot <- function(obs, model, samples=1000, statistic="mean"){
   fig <- ppc_stat(y = obs, 
