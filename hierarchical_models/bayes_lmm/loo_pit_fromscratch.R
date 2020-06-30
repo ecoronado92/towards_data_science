@@ -8,8 +8,6 @@ bounce_data <- bounce_data <- read_csv("../../data/bounce_rates_sim.csv",
   mutate(std_age = scale(age))
 
 # Allocate CDF value mean vector for each iteration
-#cdf_means <- rep(0, 613)
-#cdf_medians <- rep(0,613)
 cdf_vals <- rep(0,613)
 pdraw <- matrix(0, 613, 3000)
 
@@ -31,11 +29,11 @@ bayes_rintercept <- brm(bounce_time ~ std_age + (1|county),
 pdraw[1,] <- posterior_predict(bayes_rintercept, 
                            newdata = bounce_data[1,])
 
-cdf_vals[1] <- mean(pdraw <= bounce_data$bounce_time[1])
+cdf_vals[1] <- mean(pdraw[i,] <= bounce_data$bounce_time[1])
 
 
 
-for (i in 494:613){
+for (i in 2:613){
   tmp_data <- bounce_data[-i,]
   
   bayes_rintercept <- update(bayes_rintercept, newdata = tmp_data)
@@ -44,7 +42,7 @@ for (i in 494:613){
   pdraw[i,] <- posterior_predict(bayes_rintercept, 
                              newdata = bounce_data[i,])
   
-  cdf_vals[i] <- mean(pdraw <= bounce_data$bounce_time[i])  
+  cdf_vals[i] <- mean(pdraw[i,] <= bounce_data$bounce_time[i])  
   
 }
 
