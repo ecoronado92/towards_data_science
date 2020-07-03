@@ -426,11 +426,14 @@ To conclude, here's a nice animation on how all this is connected.
 ![](./pit_loo_animation.gif)
 
 
+
 ## References
 
 1. Gelman, A., Carlin, J. B., Stern, H. S., Dunson, D. B., Vehtari, A., & Rubin, D. B. (2013). Bayesian data analysis. CRC press. pages 152-153
 
 2. https://mc-stan.org/bayesplot/reference/PPC-loo.html
 
+## Acknowledgement
 
+*I would like to thank [Kimberly Roche](https://www.linkedin.com/in/kimberly-roche-6284b11a5/) and [Sam Voisin](https://www.linkedin.com/in/samvoisin/) for taking the time to discuss these concepts with me*
 
