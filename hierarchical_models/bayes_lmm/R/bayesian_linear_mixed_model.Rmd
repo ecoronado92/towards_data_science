@@ -23,7 +23,7 @@ libs <- c("tidyverse", "knitr", "kableExtra", "gridExtra", "grid",
 
 not_found <- libs[!(libs %in% installed.packages()[,"Package"])]
 if(length(not_found)){
-  install.packages(not_found)
+  install.packages(not_found, repos =  "http://cran.us.r-project.org")
   }
 
 ```
