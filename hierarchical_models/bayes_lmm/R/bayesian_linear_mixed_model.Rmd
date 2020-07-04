@@ -15,6 +15,17 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 set.seed(2020)
 
+install.packages("dplyr", repos =  "http://cran.us.r-project.org") #1.0.0
+
+libs <- c("tidyverse", "knitr", "kableExtra", "gridExtra", "grid",
+          "ggpubr", "modelr", "gganimate", "gifski", "png", "rstan", "brms",
+          "tidybayes", "bayesplot", "loo", "extraDistr")
+
+not_found <- libs[!(libs %in% installed.packages()[,"Package"])]
+if(length(not_found)){
+  install.packages(not_found)
+  }
+
 ```
 
 ## Intro
@@ -23,6 +34,7 @@ The following code aims to be a step-by-step walkthrough on how to implement and
 
 ## Load Packages
 ```{r load_packages, message=FALSE}
+
 require(tidyverse)
 require(dplyr) # dplyr 1.0.0
 require(knitr)
