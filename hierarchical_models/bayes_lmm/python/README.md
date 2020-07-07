@@ -4,10 +4,9 @@ Repo contains materials covering how to implementing, diagnose and evaluate a hi
 
 Bayesian models are implemented via the `pymc3` package which leverages `theano`. The data analyzed is simulated website bounce rate data. 
 
-These materials are related to the following Towards Data Science articles:
-
 
 ## Main Content
 
-TBD
+- **bayesian_linear_mixed_effects.ipynb**:  Jupyter NB with code to implement, diagnose and evaluate a Bayesian linear mixed effects model using bounce rate data.
+
 
