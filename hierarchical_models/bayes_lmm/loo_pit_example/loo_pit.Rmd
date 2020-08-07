@@ -13,6 +13,14 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
+libs <- c("tidyverse", "brms", "loo", "bayesplot", "gridExtra",
+          "rstantools", "magick", "gganimate")
+
+not_found <- libs[!(libs %in% installed.packages()[,"Package"])]
+if(length(not_found)){
+  install.packages(not_found, repos =  "http://cran.us.r-project.org")
+  }
 ```
 
 # Background
@@ -58,6 +66,8 @@ require(brms)
 require(loo)
 require(bayesplot)
 require(gridExtra)
+source("bc_density.R") # custom functions, KDE boundary correction
+
 set.seed(2020)
 
 # Load the original data
@@ -93,6 +103,15 @@ ppc_loo_pit_overlay(bounce_data$bounce_time,
 
 ```
 
+
+##### **Boundary corrected PPC LOO PIT OVERLAY custom function**
+```{r}
+# Boundary corrected PIT values, modified loo_pit_overlay function
+#color_scheme_set("gray")
+ppc_loo_pit_overlay2(bounce_data$bounce_time, 
+                    posterior_predict(bayes_rintercept), lw = lw)
+
+```
 
 ## Generating the LOO-PIT values
 
@@ -154,23 +173,30 @@ It seems like the process produced a set of LOO-PIT values somewhat similar to t
 pdraw <- readRDS("./pdraw.rds")
 cdf_vals <- readRDS("./cdf_vals.rds") %>% 
   as_tibble() %>% 
-  mutate(county = bounce_data$county)
+  mutate(county = bounce_data$county) 
+  
+bc_cdf_vals <- cdf_vals %>% 
+  mutate(value = bc_pvals(x = value)) %>% 
+  mutate(xx = seq(0, 1, length.out = nrow(bounce_data)))
+  
 
 
 ## LOO-PIT diagram
 set.seed(99999)
-runif_draws <- sapply(1:50, function(x){runif(613)}) %>% 
+samples <- 70
+runif_draws <- generate_bc_runifs(runif(nrow(bounce_data)), n = samples) %>% 
   t() %>% as_tibble %>% 
-  reshape2::melt()
+  reshape2::melt() %>% 
+  mutate(xx = rep(seq(0, 1, length.out = nrow(bounce_data)), 
+                  times = samples))
 
 ggplot() + 
   geom_line(data=runif_draws, 
-            aes(x = value, color = variable), 
+            aes( x = xx,y = value, color = variable), 
             alpha=0.2,
-            show.legend = FALSE, 
-            stat = 'density')  +
-  scale_color_manual(values=c(rep('#D3D3D3', 613)) ) +
-  geom_density(aes(cdf_vals$value)) +
+            show.legend = FALSE)  +
+  scale_color_manual(values=c(rep('#b0b0b0', 613)) ) +
+  geom_line(data = bc_cdf_vals, aes(x = xx, y = value)) +
   theme_bw() +
   theme(axis.title = element_blank())
 
@@ -212,7 +238,7 @@ ggplot(df_melt, aes(x=value, y=..density.., color=variable))  +
 
 If our model is correctly representing uncertainty and thus well specified, we shouldn't see any pattern on the vertical line locations. In other words, they shouldn't concentrate at certain locations in the densities and should instead be scattered across locations (i.e. we want both common and extreme values to be somewhat equally recoverable). 
 
-In our figure above `dorset`'s marginal densities and values provide an example of this as we can see below. The densities seem to account for both common an extreme out-of-sample values and thus the CDF values generated from this case follow a uniform distribution (right).
+In our figure above `dorset`'s marginal densities and values provide an example of this as we can see below. The densities seem to account for both common an extreme out-of-sample values and thus the CDF values generated from this case follows the trend from the random uniform distributions (right).
 
 
 ```{r message=FALSE}
@@ -222,9 +248,10 @@ dorset <- df_melt %>%
   filter(county == "dorset")
 
 dorset_cdf <- cdf_vals %>% 
-  filter(county == "dorset")
+  filter(county == "dorset") %>%
+  mutate(value = bc_pvals(x = value)) %>% 
+  mutate(xx = seq(0, 1, length.out = n()))
 
-  
 
 ppd <- ggplot(dorset, aes(x=value, y= ..density.., color=variable))  + 
   geom_vline(aes(xintercept=yobs), alpha=0.3) + 
@@ -237,12 +264,11 @@ ppd <- ggplot(dorset, aes(x=value, y= ..density.., color=variable))  +
 
 pit <- ggplot() + 
   geom_line(data=runif_draws, 
-            aes(x = value, color = variable), 
+            aes(x = xx, y = value, color = variable), 
             alpha=0.2,
-            show.legend = FALSE, 
-            stat = 'density')  +
-  scale_color_manual(values=c(rep('#D3D3D3', 613)) ) +
-  geom_density(aes(dorset_cdf$value)) +
+            show.legend = FALSE)  +
+  scale_color_manual(values=c(rep('#b0b0b0', 613)) ) +
+  geom_line(data = dorset_cdf, aes(x = xx, y = value)) +
   theme_bw() +
   theme(axis.title.y = element_blank()) +
   labs(x="CDF values")
@@ -264,7 +290,9 @@ devon <- df_melt %>%
   filter(county == "devon")
 
 devon_cdf <- cdf_vals %>% 
-  filter(county == "devon")
+  filter(county == "devon") %>% 
+  mutate(value = bc_pvals(x = value)) %>% 
+  mutate(xx = seq(0, 1, length.out = n()))
 
   
 
@@ -279,15 +307,14 @@ ppd <- ggplot(devon, aes(x=value, y= ..density.., color=variable))  +
 
 pit <- ggplot() + 
   geom_line(data=runif_draws, 
-            aes(x = value, color = variable), 
+            aes(x = xx, y = value, color = variable), 
             alpha=0.2,
-            show.legend = FALSE, 
-            stat = 'density')  +
-  scale_color_manual(values=c(rep('#D3D3D3', 613)) ) +
-  geom_density(aes(devon_cdf$value)) +
+            show.legend = FALSE)  +
+  scale_color_manual(values=c(rep('#b0b0b0', 613)) ) +
+  geom_line(data = devon_cdf, aes(x = xx, y = value)) +
   theme_bw() +
   theme(axis.title.y = element_blank()) +
-  labs(x = "CDF values")
+  labs(x="CDF values")
 
 grid.arrange(ppd, pit, ncol=2)
 
@@ -307,7 +334,9 @@ cheshire <- df_melt %>%
   filter(county == "cheshire")
 
 cheshire_cdf <- cdf_vals %>% 
-  filter(county == "cheshire")
+  filter(county == "cheshire") %>% 
+  mutate(value = bc_pvals(x = value)) %>% 
+  mutate(xx = seq(0, 1, length.out = n()))
 
   
 
@@ -322,15 +351,14 @@ ppd <- ggplot(cheshire, aes(x=value, y= ..density.., color=variable))  +
 
 pit <- ggplot() + 
   geom_line(data=runif_draws, 
-            aes(x = value, color = variable), 
+            aes(x = xx, y = value, color = variable), 
             alpha=0.2,
-            show.legend = FALSE, 
-            stat = 'density')  +
-  scale_color_manual(values=c(rep('#D3D3D3', 613)) ) +
-  geom_density(aes(cheshire_cdf$value)) +
+            show.legend = FALSE)  +
+  scale_color_manual(values=c(rep('#b0b0b0', 613)) ) +
+  geom_line(data = cheshire_cdf, aes(x = xx, y = value)) +
   theme_bw() +
   theme(axis.title.y = element_blank()) +
-  labs(x = "CDF values")
+  labs(x="CDF values")
 
 
 grid.arrange(ppd, pit, ncol=2)
@@ -355,10 +383,13 @@ london <- df_melt %>%
   mutate(state = rep(1:37, each=3000))
 
 london_cdf <- cdf_vals %>% 
-  filter(county == "london")
+  filter(county == "london") %>% 
+  mutate(value = bc_pvals(x = value)) %>% 
+  mutate(xx = seq(0, 1, length.out = n()))
 
 # Had to loop to create this special melt for animation
-melt_cdf <- tibble(value = numeric(),
+melt_cdf <- tibble(xx = double(),
+                   value = numeric(),
                    state = integer())
 
 for (i in 2:37){
@@ -388,8 +419,8 @@ pp_anim <- ggplot(london, aes(x=value, y= ..density.., color=variable))  +
   shadow_mark(alpha=0.5)
 
 
-pit_anim <- ggplot(melt_cdf, aes(value)) + 
-  geom_density() +
+pit_anim <- ggplot(melt_cdf, aes(x = xx, y = value)) + 
+  geom_line() +
   theme_bw() +
   ggtitle("London LOO PIT values",
           subtitle = 'Computed CDF values up to obs #: {closest_state}') +
