@@ -1,6 +1,7 @@
 
 
 # Boundary correction KDE helper function
+#bc_dunif <- function(xs, pvals, b, xmax = 1){
 bc_dunif <- function(xs, pvals, b, xmax = 1){
   
   # Function based on biased-corrected (modified) beta kernel 
@@ -8,8 +9,9 @@ bc_dunif <- function(xs, pvals, b, xmax = 1){
   # Computational Statistics & Data Analysis 31.2 (1999): 131-145.
   
   # Re-scaling inputs based on upper_bound given beta kernel is defined [0,1]
+  
   xs <- xs/xmax
-  pvals <-  pvals/xmax
+  pvals <- pvals/xmax
   b <-  b/xmax # smoothing parameter (i.e. bw)
   
   # Bias correction function
@@ -17,19 +19,27 @@ bc_dunif <- function(xs, pvals, b, xmax = 1){
     return(2*b^2 + 2.5 - sqrt(4*b^4 + 6*b^2 + 2.25 - x^2 - x/b))
   }
   
-  # Piecewise kernel value estimation
-  if ((xs >= 2*b) & (xs <= (1 - 2*b))) {
-    d <- mean(dbeta(pvals, xs/b, (1 - xs)/b))
-    
-  } else if ((xs >= 0) & (xs < 2*b)) {
-    d <- mean(dbeta(pvals, rho(xs, b), (1 - xs)/b))
-    
-  } else if ((xs > (1 - 2*b)) & (xs <= 1)) {
-    d <- mean(dbeta(pvals, xs/b, rho(1 - xs, b)))
-    
-  } else {
-    d <- 0
+  bc_kde_calc <- function(xs, b,  pvals){
+    # Piecewise kernel value estimation
+    if ((xs >= 2*b) & (xs <= (1 - 2*b))) {
+      d <- mean(dbeta(pvals, xs/b, (1 - xs)/b))
+      
+    } else if ((xs >= 0) & (xs < 2*b)) {
+      d <- mean(dbeta(pvals, rho(xs, b), (1 - xs)/b))
+      
+    } else if ((xs > (1 - 2*b)) & (xs <= 1)) {
+      d <- mean(dbeta(pvals, xs/b, rho(1 - xs, b)))
+      
+    } else {
+      d <- 0
+    }
   }
+
+    d <- vapply(X = xs, 
+             FUN = bc_kde_calc, 
+             b = b,
+             pvals = pvals, 
+             FUN.VALUE = 0)
   
   return(d/xmax)
   
@@ -42,6 +52,7 @@ bc_pvals <- function(x, bw = "nrd0"){
   xs  <- seq(0, 1, length.out = length(x))
   d <- xs
   xmax <- 1 + 1e-9
+  
   bw <- density(x, bw = bw)$bw # extract bw
   
   # get only valid pvals
@@ -59,12 +70,7 @@ bc_pvals <- function(x, bw = "nrd0"){
     valid_pvals = valid_pvals[valid_pvals != 0]
   }
   
-  # Boundary corrected values
-  bc_vals <- sapply(xs, 
-                   FUN = bc_dunif, 
-                   pvals = valid_pvals, 
-                   b = bw)
-  
+  bc_vals <- bc_dunif(xs = xs, pvals=valid_pvals, b =bw)
   
   # Set any negative values to zero and output bc density values
   bc_vals[which(bc_vals < 0)] = 0
