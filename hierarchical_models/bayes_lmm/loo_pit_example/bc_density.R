@@ -2,7 +2,6 @@
 # and code from bayesplot developers (Aki Vehtari, Jonah Gabry, et al)
 
 # Boundary correction KDE helper function
-#bc_dunif <- function(xs, pvals, b, xmax = 1){
 bc_dunif <- function(xs, pvals, b, xmax = 1){
   
   # Function based on biased-corrected (modified) beta kernel 
