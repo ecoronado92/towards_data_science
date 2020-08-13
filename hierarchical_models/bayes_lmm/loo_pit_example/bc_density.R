@@ -1,4 +1,5 @@
-
+# Based on code by Yang Hu and Carl Scarrott in evmix package
+# and code from bayesplot developers (Aki Vehtari, Jonah Gabry, et al)
 
 # Boundary correction KDE helper function
 #bc_dunif <- function(xs, pvals, b, xmax = 1){
